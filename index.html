@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>العجلة الذكية — توزيع عشوائي على مجموعات</title>
+  <!-- Supabase JS v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg1:#0f172a; /* slate-900 */
+      --bg2:#1f2937; /* gray-800 */
+      --acc:#22d3ee; /* cyan-400 */
+      --acc2:#a78bfa; /* violet-400 */
+      --success:#22c55e;
+      --danger:#ef4444;
+      --card:#0b1024cc;
+      --glass:rgba(255,255,255,.08);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:'Cairo',system-ui,Segoe UI; color:#fff; overflow-x:hidden;
+      background: radial-gradient(1200px 800px at 10% 10%, #111827 0%, #0b132b 40%, #090a12 100%),
+                  url('https://images.unsplash.com/photo-1516387938699-a93567ec168e?q=80&w=1200&auto=format&fit=crop') center/cover fixed;
+    }
+    .overlay{position:fixed; inset:0; backdrop-filter:blur(6px); background:linear-gradient(135deg, #0b1024e6 0%, #0b1024aa 60%, #0b102466 100%);}
+
+    .container{position:relative; max-width:1100px; margin:0 auto; padding:20px;}
+
+    header{display:flex; align-items:center; justify-content:space-between; gap:16px; padding-top:8px}
+    .brand{display:flex; align-items:center; gap:12px}
+    .logo{width:40px; height:40px; border-radius:14px; background:linear-gradient(135deg,var(--acc),var(--acc2)); box-shadow:0 10px 30px #0008}
+    h1{margin:0; font-size:clamp(20px,3vw,28px)}
+    .nav{display:flex; gap:10px}
+    .btn{cursor:pointer; border:0; padding:10px 16px; border-radius:14px; font-weight:700; color:#111; background:linear-gradient(135deg,#fff,#dbeafe); box-shadow:inset 0 0 0 1px #ffffff33, 0 10px 30px #0006; transition:.2s}
+    .btn.alt{color:#fff; background:linear-gradient(135deg,var(--acc2),var(--acc));}
+    .btn.ghost{background:transparent; color:#fff; border:1px solid #ffffff33}
+    .btn:disabled{opacity:.5; cursor:not-allowed}
+
+    .grid{display:grid; grid-template-columns:1.1fr .9fr; gap:22px; margin-top:24px}
+    @media (max-width: 900px){ .grid{grid-template-columns:1fr;}}
+
+    .card{background:var(--card); border:1px solid #ffffff22; border-radius:22px; padding:18px; box-shadow:0 20px 50px #0008}
+    .card h2{margin:0 0 12px 0; font-size:22px}
+
+    /* Form */
+    form .row{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+    form .row + .row{margin-top:12px}
+    form input, form select{width:100%; padding:12px 14px; border-radius:12px; border:1px solid #3b3b4f; background:#0e132c; color:#fff; outline:none}
+    .helper{font-size:13px; opacity:.8}
+
+    /* Wheel */
+    .wheel-wrap{position:relative; display:flex; align-items:center; justify-content:center; aspect-ratio:1/1; width:min(540px, 95vw); margin:0 auto}
+    canvas#wheel{width:100%; height:100%; background: radial-gradient(circle at 30% 30%, #0e1a3a, #0a0f24 60%); border-radius:50%; border:2px solid #ffffff22; box-shadow:inset 0 0 60px #0008, 0 20px 60px #0008}
+    .pointer{position:absolute; top:-6px; left:50%; translate:-50% 0; width:0; height:0; border-left:14px solid transparent; border-right:14px solid transparent; border-bottom:24px solid var(--acc); filter:drop-shadow(0 6px 10px #000a)}
+    .spin-btn{position:absolute; inset:auto auto 18px 50%; translate:-50% 0}
+
+    /* Result + alerts */
+    .result{margin-top:10px; font-weight:800; font-size:18px}
+    .alert{padding:12px 14px; border-radius:12px; margin-top:10px; display:none}
+    .alert.show{display:block}
+    .alert.ok{background:#052e1b; border:1px solid #22c55e33}
+    .alert.bad{background:#3b0a0a; border:1px solid #ef444433}
+
+    /* Admin */
+    .admin{margin-top:26px}
+    .admin .toolbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+    table{width:100%; border-collapse:collapse; margin-top:12px; background:#0d1433; border-radius:12px; overflow:hidden}
+    th, td{padding:10px 12px; border-bottom:1px solid #ffffff10; text-align:center}
+    th{background:#0a1027; font-weight:800}
+    tr:last-child td{border-bottom:0}
+    .pill{padding:4px 10px; border-radius:999px; background:#111a3b; border:1px solid #ffffff22; font-size:12px}
+    .muted{opacity:.75}
+
+    footer{margin:28px 0 10px; text-align:center; opacity:.8; font-size:13px}
+    code.inline{background:#0e132c; padding:2px 6px; border-radius:6px}
+  </style>
+</head>
+<body>
+  <div class="overlay"></div>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo"></div>
+        <h1>العجلة الذكية — توزيع المجموعات</h1>
+      </div>
+      <nav class="nav">
+        <button class="btn ghost" id="show-user">واجهة المستخدم</button>
+        <button class="btn alt" id="show-admin">لوحة الإدارة</button>
+      </nav>
+    </header>
+
+    <div class="grid" id="user-side">
+      <section class="card">
+        <h2>بياناتك</h2>
+        <form id="user-form">
+          <div class="row">
+            <input id="name" placeholder="الاسم الثلاثي" required />
+            <input id="phone" placeholder="رقم الهاتف" required />
+          </div>
+          <div class="row">
+            <select id="gender" required>
+              <option value="">النوع</option>
+              <option value="boy">ولد</option>
+              <option value="girl">بنت</option>
+            </select>
+            <button type="submit" class="btn" id="start-spin">سجّل ودوّر العجلة 🎯</button>
+          </div>
+          <div class="helper">* رقم الهاتف فريد — لا يمكن التسجيل بنفس الرقم مرتين.</div>
+        </form>
+        <div class="alert bad" id="err"></div>
+        <div class="alert ok" id="ok"></div>
+      </section>
+
+      <section class="card">
+        <h2>العجلة</h2>
+        <div class="wheel-wrap">
+          <div class="pointer"></div>
+          <canvas id="wheel" width="600" height="600"></canvas>
+          <button class="btn spin-btn" id="spin-again" disabled>دوّر مرة أخرى</button>
+        </div>
+        <div class="result" id="result"></div>
+        <div class="helper muted">* العجلة تختار عشوائياً من المجموعات غير المكتملة فقط.</div>
+      </section>
+    </div>
+
+    <section class="card admin" id="admin-side" style="display:none">
+      <h2>لوحة الإدارة</h2>
+      <div class="toolbar">
+        <input id="admin-pass" placeholder="كلمة مرور الإدارة" />
+        <button class="btn" id="admin-login">دخول</button>
+        <span class="pill muted">تنبيه: كلمة المرور هنا ليست حماية قوية — للاستخدام البسيط فقط.</span>
+      </div>
+      <div id="admin-panels" style="display:none">
+        <div style="margin-top:14px" class="toolbar">
+          <input id="g-name" placeholder="اسم المجموعة" />
+          <input id="g-cap" type="number" placeholder="الحد الأقصى" />
+          <button class="btn" id="g-add">إضافة مجموعة</button>
+        </div>
+
+        <table id="groups-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>المجموعة</th>
+              <th>الحد الأقصى</th>
+              <th>المسجلون</th>
+              <th>متبقي</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <h3 style="margin-top:16px">قائمة الأشخاص</h3>
+        <table id="users-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>الاسم</th>
+              <th>الهاتف</th>
+              <th>النوع</th>
+              <th>المجموعة</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>صُمم ليشجع شباب إعدادي — ألوان، جليتش بسيط، وخلفية ملهمة. ✨</footer>
+  </div>
+
+  <!-- ========================================= -->
+  <!-- 🧰  إعدادات Supabase: غيّر القيم أدناه     -->
+  <!-- ========================================= -->
+  <script>
+    const SUPABASE_URL = 'https://uvrtdlhidvcbtneljwow.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2cnRkbGhpZHZjYnRuZWxqd293Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyNDQ2MDMsImV4cCI6MjA3MDgyMDYwM30.7f36ccptnIlVKxtO6E_i3DUyuCBSxeJkUrtTJkTd9-g';
+
+    // إسم الدالة/الـ RPC المعرّفة في SQL أدناه
+    const FN_ASSIGN = 'assign_user_to_group';
+    const FN_ADMIN_ADD = 'admin_add_group';
+    const FN_ADMIN_UPDATE = 'admin_update_group';
+    const FN_ADMIN_DELETE = 'admin_delete_group';
+    const FN_ADMIN_LIST = 'admin_list_overview';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  </script>
+
+  <!-- ============================= -->
+  <!-- 🎡  كود العجلة + واجهة المستخدم -->
+  <!-- ============================= -->
+  <script>
+    const userSide = document.getElementById('user-side');
+    const adminSide = document.getElementById('admin-side');
+    document.getElementById('show-user').onclick = () => { userSide.style.display='grid'; adminSide.style.display='none'; };
+    document.getElementById('show-admin').onclick = () => { userSide.style.display='none'; adminSide.style.display='block'; };
+
+    const wheelCanvas = document.getElementById('wheel');
+    const ctx = wheelCanvas.getContext('2d');
+    let segments = []; // [{id,name,capacity,filled}]
+    let selectedSegmentIndex = null;
+
+    function drawWheel(highlightIndex=null){
+      const W = wheelCanvas.width, H = wheelCanvas.height;
+      ctx.clearRect(0,0,W,H);
+      const cx=W/2, cy=H/2, r=W/2 - 6;
+      const n = segments.length || 1;
+      for(let i=0;i<n;i++){
+        const start = (i/n)*2*Math.PI - Math.PI/2;
+        const end   = ((i+1)/n)*2*Math.PI - Math.PI/2;
+        // لون متدرج حيوي
+        const grd = ctx.createLinearGradient(cx,cy, cx+r*Math.cos(start), cy+r*Math.sin(start));
+        const hue = Math.floor(360*(i/n));
+        grd.addColorStop(0, `hsl(${hue}, 80%, 55%)`);
+        grd.addColorStop(1, `hsl(${(hue+40)%360}, 80%, 45%)`);
+        ctx.beginPath();
+        ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,end); ctx.closePath();
+        ctx.fillStyle=grd; ctx.fill();
+        // حافة
+        ctx.strokeStyle = '#00000055'; ctx.lineWidth=2; ctx.stroke();
+        // نص
+        ctx.save();
+        ctx.translate(cx,cy); ctx.rotate((start+end)/2);
+        ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='700 18px Cairo';
+        ctx.fillText(segments[i]?.name || '…', r*0.62, 6);
+        ctx.restore();
+      }
+      // دائرة وسط
+      ctx.beginPath(); ctx.arc(W/2,H/2,36,0,2*Math.PI); ctx.fillStyle='#0b1024'; ctx.fill();
+      ctx.strokeStyle='#ffffff55'; ctx.stroke();
+
+      if(highlightIndex!=null){
+        // لمعة على القطاع الفائز
+        const i = highlightIndex, n=segments.length;
+        const start = (i/n)*2*Math.PI - Math.PI/2;
+        const end   = ((i+1)/n)*2*Math.PI - Math.PI/2;
+        ctx.beginPath(); ctx.moveTo(W/2,H/2); ctx.arc(W/2,H/2,r,start,end); ctx.closePath();
+        ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fill();
+      }
+    }
+
+    async function loadSegments(){
+      // نجلب كل المجموعات مع أعداد المسجلين
+      const { data, error } = await supabase
+        .from('groups_with_counts') // View مريحة ننشئها في SQL
+        .select('*')
+        .order('name');
+      if(error){ console.error(error); return; }
+      segments = data.map(g=>({ id:g.id, name:g.name, capacity:g.capacity, filled:g.member_count }));
+      drawWheel();
+    }
+
+    // دوران العجلة ليقف على index معين
+    function spinTo(index){
+      return new Promise(resolve=>{
+        const n = segments.length;
+        const baseRot = 360*5; // للفات ممتعة
+        const segmentAngle = 360/n;
+        const targetAngleCenter = (index+0.5)*segmentAngle; // من أعلى (السهم للأعلى)
+        // تحويل لكي يقف مؤشر السهم عند منتصف القطاع
+        const finalRotation = baseRot + (360 - targetAngleCenter);
+        const el = wheelCanvas;
+        el.style.transition = 'transform 4s cubic-bezier(.1,.75,.2,1)';
+        el.style.transform = `rotate(${finalRotation}deg)`;
+        setTimeout(()=>{
+          el.style.transition='';
+          const mod = finalRotation % 360;
+          el.style.transform = `rotate(${mod}deg)`; // ثبت قيمة بسيطة
+          resolve();
+        }, 4100);
+      });
+    }
+
+    function showMsg(id, text){
+      const el = document.getElementById(id);
+      el.textContent = text; el.classList.add('show');
+      if(id==='err') document.getElementById('ok').classList.remove('show');
+      if(id==='ok') document.getElementById('err').classList.remove('show');
+    }
+
+    // إرسال البيانات + اختيار آمن عبر RPC
+    document.getElementById('user-form').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const name = document.getElementById('name').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const gender = document.getElementById('gender').value;
+      document.getElementById('start-spin').disabled = true;
+      showMsg('err',''); document.getElementById('err').classList.remove('show');
+      document.getElementById('ok').classList.remove('show');
+
+      try{
+        // يستدعي الدالة داخل قاعدة البيانات لتضمن الذرّة ومنع التعارض
+        const { data, error } = await supabase.rpc(FN_ASSIGN, { p_name:name, p_phone:phone, p_gender:gender });
+        if(error){
+          if(error.message && error.message.includes('phone_exists')){
+            showMsg('err','هذا الرقم مسجل من قبل.');
+          } else if(error.message && error.message.includes('no_available_group')){
+            showMsg('err','لا توجد مجموعات متاحة حالياً.');
+          } else if(error.code === '23505'){ // unique_violation
+            showMsg('err','هذا الرقم مسجل من قبل.');
+          } else {
+            showMsg('err','حدث خطأ غير متوقع.');
+          }
+          return;
+        }
+        // الدالة ترجع اسم المجموعة المختارة
+        const chosenGroupName = data?.group_name || data?.[0]?.group_name;
+        const idx = segments.findIndex(s=>s.name===chosenGroupName);
+        if(idx===-1){ await loadSegments(); }
+        const index = segments.findIndex(s=>s.name===chosenGroupName);
+        await spinTo(index);
+        document.getElementById('result').textContent = `مبروك! مجموعتك: ${chosenGroupName}`;
+        showMsg('ok','تم حفظ بياناتك بنجاح ✅');
+        document.getElementById('spin-again').disabled = false;
+        await loadSegments();
+      } finally {
+        document.getElementById('start-spin').disabled = false;
+      }
+    });
+
+    document.getElementById('spin-again').addEventListener('click', ()=>{
+      // دوران شكلي إضافي
+      const n = segments.length; if(!n) return; const idx = Math.floor(Math.random()*n);
+      spinTo(idx);
+    });
+
+    loadSegments();
+  </script>
+
+  <!-- ============================= -->
+  <!-- 🛠️  لوحة الإدارة: استعلامات     -->
+  <!-- ============================= -->
+  <script>
+    let ADMIN_PASS = null;
+    const adminPanels = document.getElementById('admin-panels');
+    const tbodyGroups = document.querySelector('#groups-table tbody');
+    const tbodyUsers = document.querySelector('#users-table tbody');
+
+    document.getElementById('admin-login').onclick = async ()=>{
+      ADMIN_PASS = document.getElementById('admin-pass').value;
+      if(!ADMIN_PASS){ alert('اكتب كلمة المرور'); return; }
+      adminPanels.style.display='block';
+      await refreshAdmin();
+    };
+
+    async function refreshAdmin(){
+      // ملخص المجموعات + الأشخاص (دالة مخصصة تُرجع JSON منظّم)
+      const { data, error } = await supabase.rpc(FN_ADMIN_LIST, { p_password: ADMIN_PASS });
+      if(error){ alert('كلمة مرور الإدارة غير صحيحة'); adminPanels.style.display='none'; return; }
+      const groups = data.groups;
+      const users = data.users;
+
+      // جدول المجموعات
+      tbodyGroups.innerHTML='';
+      groups.forEach((g,i)=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML = `
+          <td>${i+1}</td>
+          <td><input data-id="${g.id}" data-field="name" value="${g.name}" style="width:100%; padding:6px 8px; border-radius:8px; border:1px solid #334" /></td>
+          <td><input data-id="${g.id}" data-field="capacity" type="number" value="${g.capacity}" style="width:100%; padding:6px 8px; border-radius:8px; border:1px solid #334" /></td>
+          <td>${g.member_count}</td>
+          <td>${g.capacity - g.member_count}</td>
+          <td>
+            <button class="btn" data-action="save" data-id="${g.id}">حفظ</button>
+            <button class="btn ghost" data-action="delete" data-id="${g.id}">حذف</button>
+          </td>`;
+        tbodyGroups.appendChild(tr);
+      });
+
+      // أحداث الحفظ والحذف
+      tbodyGroups.onclick = async (e)=>{
+        const action = e.target.getAttribute('data-action');
+        const id = e.target.getAttribute('data-id');
+        if(!action||!id) return;
+        if(action==='delete'){
+          if(!confirm('حذف المجموعة سيحذف تسجيلاتها أيضاً؟')) return;
+          const { error } = await supabase.rpc(FN_ADMIN_DELETE, { p_password: ADMIN_PASS, p_group_id:id });
+          if(error){ alert('فشل الحذف: '+error.message); return; }
+          await refreshAdmin();
+        }
+        if(action==='save'){
+          const name = tbodyGroups.querySelector(`input[data-id="${id}"][data-field="name"]`).value;
+          const capacity = parseInt(tbodyGroups.querySelector(`input[data-id="${id}"][data-field="capacity"]`).value||'0',10);
+          const { error } = await supabase.rpc(FN_ADMIN_UPDATE, { p_password: ADMIN_PASS, p_group_id:id, p_name:name, p_capacity:capacity });
+          if(error){ alert('فشل التحديث: '+error.message); return; }
+          await refreshAdmin();
+        }
+      };
+
+      // جدول الأشخاص
+      tbodyUsers.innerHTML='';
+      users.forEach((u,i)=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${u.name}</td><td>${u.phone}</td><td>${u.gender==='boy'?'ولد':'بنت'}</td><td>${u.group_name}</td>`;
+        tbodyUsers.appendChild(tr);
+      });
+    }
+
+    document.getElementById('g-add').onclick = async ()=>{
+      const name = document.getElementById('g-name').value.trim();
+      const cap = parseInt(document.getElementById('g-cap').value||'0',10);
+      if(!name||!cap){ alert('أدخل اسم وحد أقصى'); return; }
+      const { error } = await supabase.rpc(FN_ADMIN_ADD, { p_password: ADMIN_PASS, p_name:name, p_capacity:cap });
+      if(error){ alert('فشل الإضافة: '+error.message); return; }
+      document.getElementById('g-name').value=''; document.getElementById('g-cap').value='';
+      await refreshAdmin();
+    };
+  </script>
